@@ -13,13 +13,15 @@ KERNEL_DIR="$(pwd)"
 OUT_DIR="${KERNEL_DIR}/out"
 CLANG_DIR="${CLANG_DIR:-${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64}"
 
-# 环境校验
-if [ ! -d "$CLANG_DIR/bin" ]; then
-    echo "❌ 错误: 找不到 Clang 路径，请检查 NDK 路径！"
-    exit 1
-fi
+if [ "${1:-}" != "--prepare-only" ]; then
+    # 环境校验
+    if [ ! -d "$CLANG_DIR/bin" ]; then
+        echo "❌ 错误: 找不到 Clang 路径，请检查 NDK 路径！"
+        exit 1
+    fi
 
-export PATH="${CLANG_DIR}/bin:${GCC_64_DIR}/bin:${GCC_32_DIR}/bin:${PATH}"
+    export PATH="${CLANG_DIR}/bin:${GCC_64_DIR}/bin:${GCC_32_DIR}/bin:${PATH}"
+fi
 export ARCH=arm64
 export SUBARCH=arm64
 
@@ -49,10 +51,17 @@ MAKE_ARGS=(
 # ==========================================
 echo ">>> 正在处理 KernelSU Next 源码..."
 
-# 确保源码被正确放置在 drivers/kernelsu
-if [ -d "KernelSU-Next/kernel" ] && [ ! -d "drivers/kernelsu" ]; then
-    cp -r KernelSU-Next/kernel drivers/kernelsu
-elif [ -d "KernelSU" ] && [ ! -d "drivers/kernelsu" ]; then
+# 确保源码被正确放置在 drivers/kernelsu。
+# 这个仓库的 upstream 带有坏的 KernelSU gitlink 和 drivers/kernelsu symlink，
+# CI/本地构建时统一替换成真实源码目录，避免复制进自身。
+if [ -d "KernelSU-Next/kernel" ]; then
+    rm -rf drivers/kernelsu
+    cp -a KernelSU-Next/kernel drivers/kernelsu
+    if [ -d "KernelSU-Next/uapi" ]; then
+        cp -a KernelSU-Next/uapi drivers/kernelsu/uapi
+    fi
+elif [ -d "KernelSU" ]; then
+    rm -rf drivers/kernelsu
     mv KernelSU drivers/kernelsu
 fi
 
@@ -66,6 +75,11 @@ fi
 if ! grep -q "kernelsu" drivers/Kconfig; then
     sed -i '$i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
     echo "✅ Kconfig 已注入 kernelsu 路径"
+fi
+
+if [ "${1:-}" = "--prepare-only" ]; then
+    echo "✅ KernelSU Next 源码准备完成。"
+    exit 0
 fi
 
 # ==========================================
