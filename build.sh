@@ -5,13 +5,13 @@
 # =======================================================
 
 # 1. 路径配置
-NDK_DIR="~/toolchains/android-ndk-r29"
-GCC_64_DIR="~/toolchains/aarch64-linux-android-4.9"
-GCC_32_DIR="~/toolchains/arm-linux-androideabi-4.9"
+NDK_DIR="${NDK_DIR:-$HOME/toolchains/android-ndk-r29}"
+GCC_64_DIR="${GCC_64_DIR:-$HOME/toolchains/aarch64-linux-android-4.9}"
+GCC_32_DIR="${GCC_32_DIR:-$HOME/toolchains/arm-linux-androideabi-4.9}"
 
 KERNEL_DIR="$(pwd)"
 OUT_DIR="${KERNEL_DIR}/out"
-CLANG_DIR="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64"
+CLANG_DIR="${CLANG_DIR:-${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64}"
 
 # 环境校验
 if [ ! -d "$CLANG_DIR/bin" ]; then

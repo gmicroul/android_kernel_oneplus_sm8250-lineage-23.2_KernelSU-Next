@@ -1,1 +1,218 @@
-test
+name: Build OnePlus 9R Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      defconfig:
+        description: Kernel defconfig to build
+        required: true
+        default: vendor/kona-perf_defconfig
+        type: choice
+        options:
+          - vendor/kona-perf_defconfig
+          - vendor/kona_defconfig
+      upload_release:
+        description: Create a draft release with the build artifact
+        required: true
+        default: false
+        type: boolean
+  push:
+    branches:
+      - main
+      - kernel
+    paths:
+      - '.github/workflows/build-kernel.yml'
+      - 'arch/**'
+      - 'block/**'
+      - 'certs/**'
+      - 'crypto/**'
+      - 'drivers/**'
+      - 'firmware/**'
+      - 'fs/**'
+      - 'include/**'
+      - 'init/**'
+      - 'ipc/**'
+      - 'kernel/**'
+      - 'lib/**'
+      - 'mm/**'
+      - 'net/**'
+      - 'scripts/**'
+      - 'security/**'
+      - 'sound/**'
+      - 'tools/**'
+      - 'usr/**'
+      - 'virt/**'
+      - 'Makefile'
+      - 'Kbuild'
+      - 'Kconfig'
+      - 'build.sh'
+      - 'check-container-config.sh'
+  pull_request:
+    paths:
+      - '.github/workflows/build-kernel.yml'
+      - 'arch/**'
+      - 'block/**'
+      - 'certs/**'
+      - 'crypto/**'
+      - 'drivers/**'
+      - 'firmware/**'
+      - 'fs/**'
+      - 'include/**'
+      - 'init/**'
+      - 'ipc/**'
+      - 'kernel/**'
+      - 'lib/**'
+      - 'mm/**'
+      - 'net/**'
+      - 'scripts/**'
+      - 'security/**'
+      - 'sound/**'
+      - 'tools/**'
+      - 'usr/**'
+      - 'virt/**'
+      - 'Makefile'
+      - 'Kbuild'
+      - 'Kconfig'
+      - 'build.sh'
+      - 'check-container-config.sh'
+
+permissions:
+  contents: write
+
+env:
+  DEFCONFIG: ${{ github.event.inputs.defconfig || 'vendor/kona-perf_defconfig' }}
+  OUT_DIR: ${{ github.workspace }}/out
+  NDK_VERSION: r29
+  KERNELSU_NEXT_REF: next
+
+jobs:
+  build:
+    name: Build Image (${{ github.event.inputs.defconfig || 'vendor/kona-perf_defconfig' }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc \
+            bison \
+            build-essential \
+            ca-certificates \
+            ccache \
+            curl \
+            flex \
+            git \
+            libelf-dev \
+            libssl-dev \
+            lld \
+            llvm \
+            make \
+            python3 \
+            unzip \
+            xz-utils \
+            zip \
+            zstd
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: kernel-ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            kernel-ccache-${{ runner.os }}-${{ github.ref_name }}-
+            kernel-ccache-${{ runner.os }}-
+
+      - name: Download Android NDK r29
+        run: |
+          mkdir -p "$HOME/toolchains"
+          cd "$HOME/toolchains"
+          curl -L --retry 3 -o android-ndk-${NDK_VERSION}-linux.zip \
+            "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip"
+          unzip -q android-ndk-${NDK_VERSION}-linux.zip
+          "$HOME/toolchains/android-ndk-${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version
+
+      - name: Prepare Android GCC 4.9 toolchains
+        run: |
+          mkdir -p "$HOME/toolchains"
+          cd "$HOME/toolchains"
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
+
+      - name: Inject KernelSU-Next if missing
+        run: |
+          set -euo pipefail
+          if [ ! -d drivers/kernelsu ]; then
+            git clone --depth=1 --branch "${KERNELSU_NEXT_REF}" \
+              https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
+            cp -r KernelSU-Next/kernel drivers/kernelsu
+          fi
+          if ! grep -q 'kernelsu' drivers/Makefile; then
+            printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> drivers/Makefile
+          fi
+          if ! grep -q 'drivers/kernelsu/Kconfig' drivers/Kconfig; then
+            sed -i '$i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          fi
+
+      - name: Build kernel Image
+        env:
+          NDK_DIR: ${{ github.workspace }}/../toolchains/android-ndk-r29
+          GCC_64_DIR: ${{ github.workspace }}/../toolchains/aarch64-linux-android-4.9
+          GCC_32_DIR: ${{ github.workspace }}/../toolchains/arm-linux-androideabi-4.9
+          CCACHE_DIR: ~/.ccache
+          CCACHE_COMPILERCHECK: content
+        run: |
+          set -euo pipefail
+          export NDK_DIR="$HOME/toolchains/android-ndk-${NDK_VERSION}"
+          export GCC_64_DIR="$HOME/toolchains/aarch64-linux-android-4.9"
+          export GCC_32_DIR="$HOME/toolchains/arm-linux-androideabi-4.9"
+          export PATH="/usr/lib/ccache:$PATH"
+          chmod +x ./build.sh ./check-container-config.sh
+          if [ "$DEFCONFIG" != "vendor/kona-perf_defconfig" ]; then
+            sed -i "s#^DEFCONFIG=.*#DEFCONFIG=\"${DEFCONFIG}\"#" build.sh
+          fi
+          ./build.sh
+          ./check-container-config.sh . out/.config
+
+      - name: Package artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp -v out/arch/arm64/boot/Image artifacts/Image
+          cp -v out/.config artifacts/kernel.config
+          cp -v check-container-config.sh artifacts/check-container-config.sh
+          sha256sum artifacts/* | tee artifacts/SHA256SUMS.txt
+          tar -C artifacts -czf oneplus9r-kernel-${GITHUB_SHA::12}.tar.gz .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus9r-kernel-${{ github.sha }}
+          path: |
+            oneplus9r-kernel-*.tar.gz
+            artifacts/Image
+            artifacts/kernel.config
+            artifacts/SHA256SUMS.txt
+          retention-days: 14
+
+      - name: Create draft release
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_release == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kernel-${{ github.run_number }}-${{ github.sha }}
+          name: OnePlus 9R kernel ${{ github.run_number }}
+          draft: true
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            oneplus9r-kernel-*.tar.gz
+            artifacts/Image
+            artifacts/kernel.config
+            artifacts/SHA256SUMS.txt
