@@ -83,7 +83,7 @@ env:
   DEFCONFIG: ${{ github.event.inputs.defconfig || 'vendor/kona-perf_defconfig' }}
   OUT_DIR: ${{ github.workspace }}/out
   NDK_VERSION: r29
-  KERNELSU_NEXT_REF: next
+  KERNELSU_NEXT_REF: legacy
 
 jobs:
   build:
