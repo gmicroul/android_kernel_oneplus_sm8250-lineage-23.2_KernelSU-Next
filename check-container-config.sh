@@ -96,20 +96,22 @@ check_one() {
     printf 'OK   %-9s %s=y\n' "$class" "$sym"
   elif grep -q "^${sym}=m" "$tmp"; then
     printf 'WARN %-9s %s=m  容器早期启动更建议内建 y\n' "$class" "$sym"
-    [[ "$class" == required ]] && status=1
+    if [[ "$class" == required ]]; then
+      status=1
+    fi
   else
     printf 'MISS %-9s %s\n' "$class" "$sym"
-    [[ "$class" == required ]] && status=1
+    if [[ "$class" == required ]]; then
+      status=1
+    fi
   fi
 }
 
 for s in "${need[@]}"; do check_one "$s" required; done
 for s in "${optional[@]}"; do check_one "$s" optional; done
 
-# Optional items are advisory only.  Their MISS/WARN lines should be visible in
-# CI logs, but they must not fail an otherwise usable LXC/Docker kernel build.
-status=0
-
+# Optional items are advisory only. Their MISS/WARN lines stay visible in CI logs,
+# while status still reflects required items only.
 if [[ $status -eq 0 ]]; then
   echo "PASS: LXC/Docker 关键内核项已满足。"
 else

@@ -60,17 +60,26 @@ if [ -d "KernelSU-Next/kernel" ]; then
     if [ -d "KernelSU-Next/uapi" ]; then
         cp -a KernelSU-Next/uapi drivers/kernelsu/uapi
     fi
-elif [ -d "/tmp/KernelSU-Next/kernel" ]; then
-    # 兼容当前 GitHub Actions workflow：它把 KernelSU-Next clone 到 /tmp，
-    # 且只复制 kernel 子目录。这里补齐 uapi，避免 uapi/app_profile.h 缺失。
-    rm -rf drivers/kernelsu
-    cp -a /tmp/KernelSU-Next/kernel drivers/kernelsu
-    if [ -d "/tmp/KernelSU-Next/uapi" ]; then
-        cp -a /tmp/KernelSU-Next/uapi drivers/kernelsu/uapi
-    fi
 elif [ -d "KernelSU" ]; then
     rm -rf drivers/kernelsu
     mv KernelSU drivers/kernelsu
+fi
+
+if [ -d "drivers/kernelsu" ] && [ ! -f "drivers/kernelsu/uapi/app_profile.h" ]; then
+    echo ">>> KernelSU Next uapi 缺失，重新浅克隆 legacy 分支补齐 public headers..."
+    tmp_ksu="$(mktemp -d)"
+    git clone --depth=1 --branch "${KERNELSU_NEXT_REF:-legacy}" \
+        https://github.com/KernelSU-Next/KernelSU-Next.git "$tmp_ksu"
+    if [ -d "$tmp_ksu/uapi" ]; then
+        rm -rf drivers/kernelsu/uapi
+        cp -a "$tmp_ksu/uapi" drivers/kernelsu/uapi
+    fi
+    rm -rf "$tmp_ksu"
+fi
+
+if [ -d "drivers/kernelsu" ] && [ ! -f "drivers/kernelsu/uapi/app_profile.h" ]; then
+    echo "❌ 错误: KernelSU Next uapi/app_profile.h 仍然缺失"
+    exit 1
 fi
 
 # 注入 Makefile
