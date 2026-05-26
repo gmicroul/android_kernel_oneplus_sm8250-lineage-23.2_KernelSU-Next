@@ -149,11 +149,16 @@ jobs:
       - name: Inject KernelSU-Next if missing
         run: |
           set -euo pipefail
-          if [ ! -d drivers/kernelsu ]; then
-            git clone --depth=1 --branch "${KERNELSU_NEXT_REF}" \
-              https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
-            cp -r KernelSU-Next/kernel drivers/kernelsu
-          fi
+          # Upstream tree contains broken gitlink/symlink placeholders:
+          #   KernelSU-Next is a gitlink without .gitmodules
+          #   drivers/kernelsu points at ../../KernelSU-Next/kernel
+          # actions/checkout with submodules disabled leaves them unusable, so
+          # always replace both placeholders with a real shallow clone.
+          rm -rf KernelSU-Next drivers/kernelsu
+          git clone --depth=1 --branch "${KERNELSU_NEXT_REF}" \
+            https://github.com/KernelSU-Next/KernelSU-Next.git /tmp/KernelSU-Next
+          cp -a /tmp/KernelSU-Next/kernel drivers/kernelsu
+          rm -rf /tmp/KernelSU-Next
           if ! grep -q 'kernelsu' drivers/Makefile; then
             printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> drivers/Makefile
           fi
