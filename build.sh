@@ -60,6 +60,14 @@ if [ -d "KernelSU-Next/kernel" ]; then
     if [ -d "KernelSU-Next/uapi" ]; then
         cp -a KernelSU-Next/uapi drivers/kernelsu/uapi
     fi
+elif [ -d "/tmp/KernelSU-Next/kernel" ]; then
+    # 兼容当前 GitHub Actions workflow：它把 KernelSU-Next clone 到 /tmp，
+    # 且只复制 kernel 子目录。这里补齐 uapi，避免 uapi/app_profile.h 缺失。
+    rm -rf drivers/kernelsu
+    cp -a /tmp/KernelSU-Next/kernel drivers/kernelsu
+    if [ -d "/tmp/KernelSU-Next/uapi" ]; then
+        cp -a /tmp/KernelSU-Next/uapi drivers/kernelsu/uapi
+    fi
 elif [ -d "KernelSU" ]; then
     rm -rf drivers/kernelsu
     mv KernelSU drivers/kernelsu
