@@ -65,8 +65,8 @@ elif [ -d "KernelSU" ]; then
     mv KernelSU drivers/kernelsu
 fi
 
-if [ -d "drivers/kernelsu" ] && [ ! -f "drivers/kernelsu/uapi/app_profile.h" ]; then
-    echo ">>> KernelSU Next uapi 缺失，重新浅克隆 legacy 分支补齐 public headers..."
+if [ -d "drivers/kernelsu" ] && { [ ! -f "drivers/kernelsu/uapi/app_profile.h" ] || [ ! -d "drivers/kernelsu/.git" ]; }; then
+    echo ">>> KernelSU Next uapi/.git 缺失，重新浅克隆 ${KERNELSU_NEXT_REF:-legacy} 分支补齐 public headers 和版本信息..."
     tmp_ksu="$(mktemp -d)"
     git clone --depth=1 --branch "${KERNELSU_NEXT_REF:-legacy}" \
         https://github.com/KernelSU-Next/KernelSU-Next.git "$tmp_ksu"
@@ -74,11 +74,19 @@ if [ -d "drivers/kernelsu" ] && [ ! -f "drivers/kernelsu/uapi/app_profile.h" ]; 
         rm -rf drivers/kernelsu/uapi
         cp -a "$tmp_ksu/uapi" drivers/kernelsu/uapi
     fi
+    if [ -d "$tmp_ksu/.git" ]; then
+        rm -rf drivers/kernelsu/.git
+        cp -a "$tmp_ksu/.git" drivers/kernelsu/.git
+    fi
     rm -rf "$tmp_ksu"
 fi
 
 if [ -d "drivers/kernelsu" ] && [ ! -f "drivers/kernelsu/uapi/app_profile.h" ]; then
     echo "❌ 错误: KernelSU Next uapi/app_profile.h 仍然缺失"
+    exit 1
+fi
+if [ -d "drivers/kernelsu" ] && [ ! -d "drivers/kernelsu/.git" ]; then
+    echo "❌ 错误: KernelSU Next .git 仍然缺失，版本号会 fallback 到 v0.0.1"
     exit 1
 fi
 
