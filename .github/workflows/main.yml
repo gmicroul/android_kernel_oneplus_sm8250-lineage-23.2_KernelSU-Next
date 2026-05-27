@@ -207,17 +207,18 @@ jobs:
           set -euo pipefail
           mkdir -p boot-repack artifacts
           curl -L --retry 3 -o boot-repack/base-boot.img "${{ github.event.inputs.boot_img_url }}"
-          curl -L --retry 3 -o boot-repack/ak3.zip \
-            "https://github.com/LenseTech/android_kernel_oneplus_sm8250-lineage-23.2_KernelSU-Next/releases/download/v20260521/Lemonades_KernelSU-Next-v33132.zip"
+          curl -L --retry 3 -o boot-repack/magisk.apk \
+            "https://github.com/topjohnwu/Magisk/releases/download/v29.0/Magisk-v29.0.apk"
           python3 - <<'PY'
           import zipfile, pathlib, shutil, os
-          zpath = pathlib.Path('boot-repack/ak3.zip')
+          zpath = pathlib.Path('boot-repack/magisk.apk')
           out = pathlib.Path('boot-repack')
           with zipfile.ZipFile(zpath) as z:
-              with z.open('tools/magiskboot') as src, open(out / 'magiskboot', 'wb') as dst:
+              with z.open('lib/x86_64/libmagiskboot.so') as src, open(out / 'magiskboot', 'wb') as dst:
                   shutil.copyfileobj(src, dst)
           os.chmod(out / 'magiskboot', 0o755)
           PY
+          file boot-repack/magiskboot
           cd boot-repack
           ./magiskboot unpack -h base-boot.img
           cp ../artifacts/Image kernel
