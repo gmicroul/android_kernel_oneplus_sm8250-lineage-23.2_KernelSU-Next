@@ -12,10 +12,15 @@ on:
           - vendor/kona-perf_defconfig
           - vendor/kona_defconfig
       upload_release:
-        description: Create a draft release with the build artifact
+        description: Create a release with the build artifact
         required: true
         default: false
         type: boolean
+      boot_img_url:
+        description: Optional direct URL to a base boot.img; when set CI repacks it with the built Image
+        required: false
+        default: ''
+        type: string
   push:
     branches:
       - main
@@ -196,6 +201,30 @@ jobs:
           sha256sum artifacts/* | tee artifacts/SHA256SUMS.txt
           tar -C artifacts -czf oneplus9r-kernel-${GITHUB_SHA::12}.tar.gz .
 
+      - name: Repack boot.img when base boot URL is provided
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.boot_img_url != '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p boot-repack artifacts
+          curl -L --retry 3 -o boot-repack/base-boot.img "${{ github.event.inputs.boot_img_url }}"
+          curl -L --retry 3 -o boot-repack/ak3.zip \
+            "https://github.com/LenseTech/android_kernel_oneplus_sm8250-lineage-23.2_KernelSU-Next/releases/download/v20260521/Lemonades_KernelSU-Next-v33132.zip"
+          python3 - <<'PY'
+          import zipfile, pathlib, shutil, os
+          zpath = pathlib.Path('boot-repack/ak3.zip')
+          out = pathlib.Path('boot-repack')
+          with zipfile.ZipFile(zpath) as z:
+              with z.open('tools/magiskboot') as src, open(out / 'magiskboot', 'wb') as dst:
+                  shutil.copyfileobj(src, dst)
+          os.chmod(out / 'magiskboot', 0o755)
+          PY
+          cd boot-repack
+          ./magiskboot unpack -h base-boot.img
+          cp ../artifacts/Image kernel
+          ./magiskboot repack base-boot.img ../artifacts/boot-kernelsu-lxc-docker-${GITHUB_SHA::12}.img
+          cd ..
+          sha256sum artifacts/boot-kernelsu-lxc-docker-${GITHUB_SHA::12}.img | tee -a artifacts/SHA256SUMS.txt
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -203,21 +232,23 @@ jobs:
           path: |
             oneplus9r-kernel-*.tar.gz
             artifacts/Image
+            artifacts/boot-kernelsu-lxc-docker-*.img
             artifacts/kernel.config
             artifacts/SHA256SUMS.txt
           retention-days: 14
 
-      - name: Create draft release
+      - name: Create release
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_release == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: kernel-${{ github.run_number }}-${{ github.sha }}
-          name: OnePlus 9R kernel ${{ github.run_number }}
-          draft: true
+          name: OnePlus 9R KernelSU-Next LXC/Docker ${{ github.run_number }}
+          draft: false
           prerelease: true
           generate_release_notes: true
           files: |
             oneplus9r-kernel-*.tar.gz
             artifacts/Image
+            artifacts/boot-kernelsu-lxc-docker-*.img
             artifacts/kernel.config
             artifacts/SHA256SUMS.txt
